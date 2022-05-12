@@ -1,0 +1,12 @@
+########## without Version Specifiers ##########
+mysql-connector-python
+colorama
+coloredlogs
+verboselogs
+docopt
+requests
+archive
+tqdm
+
+
+########## with Version Specifiers ##########

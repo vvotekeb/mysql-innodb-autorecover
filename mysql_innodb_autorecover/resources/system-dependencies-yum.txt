@@ -1,0 +1,4 @@
+glibc-static
+# python3-dnf
+ncurses-devel
+
