@@ -1,2 +1,2 @@
-# mysql-db-auto-recover
+# mysql-innodb-autorecover
 Automate recovery from Innodb pages
