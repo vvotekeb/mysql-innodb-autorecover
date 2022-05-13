@@ -19,9 +19,10 @@ from alive_progress import alive_bar
 verboselogs.install()
 
 class Percona:
-    logger          = logging.getLogger(__module__)
-    PAGE_PARSER_BIN = "page_parser"
-    CREATE_DEFS     = "create_defs.pl"
+    logger                 = logging.getLogger(__module__)
+    PAGE_PARSER_BIN        = "page_parser"
+    CREATE_DEFS_BIN        = "create_defs.pl"
+    CONSTRAINTS_PARSER_BIN = "constraints_parser"
 
     def __init__(self, datadir=None, target=None) -> None:
         super().__init__()
@@ -152,20 +153,29 @@ class Percona:
         Percona.logger.info("Parsing deleted pages from %s%s.ibd%s"%(Fore.YELLOW, table, Style.RESET_ALL))
         make = subprocess.Popen(binary, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return_code = make.wait()
-        
-        search = '**/FIL_PAGE_INDEX'
-        extracted = pathlib.Path(table_dir).glob(search)
-        for item in extracted:
-            print(item)
-        
 
     def generate_table_defs(self, table, host, port, user, password, db):
         include_dir = join(self.tool_defs_dir, "include")
         os.chdir(include_dir)
         defs_h = join(include_dir, "table_defs.h")
         os.remove(defs_h)
-        binary = [join(self.source_dir, Percona.CREATE_DEFS), "--host", host, "--port", str(port), "--user", user, "--password", password, "--db", db, "--table", table]
+        binary = [join(self.source_dir, Percona.CREATE_DEFS_BIN), "--host", host, "--port", str(port), "--user", user, "--password", password, "--db", db, "--table", table]
         with open(defs_h, 'w') as table_defs:
             subprocess.Popen(binary, stdout=table_defs, universal_newlines=True)
+
+
+    def extract_data(self, table, row_format):
+        table_dir = join(self.recovered_dir, table)
+        search = '**/FIL_PAGE_INDEX/*'
+        extracted = pathlib.Path(table_dir).glob(search)
+        os.chdir(table_dir)
+        i = 0
+        for item in extracted:
+            if not str(item).endswith('FIL_PAGE_INDEX'):
+                binary = [join(self.tool_defs_dir, Percona.CONSTRAINTS_PARSER_BIN), "-%s"%row_format, "-D", "-f", item]
+                Percona.logger.info("Extracting deleted records with cmd: %s%s%s", Fore.YELLOW, binary, Style.RESET_ALL)
+                with open("%s%d.tsv"%(table,i), "w") as tsv:
+                    make = subprocess.Popen(binary, stdout=tsv, stderr=subprocess.PIPE)
+                i=i+1
 
 
