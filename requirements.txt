@@ -7,6 +7,7 @@ docopt
 requests
 archive
 tqdm
+pathlib
 
 ########## with Version Specifiers ##########
 alive_progress==1.6.2

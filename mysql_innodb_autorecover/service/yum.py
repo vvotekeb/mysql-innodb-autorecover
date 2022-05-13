@@ -1,12 +1,14 @@
 import sys
-import verboselogs
+import logging, verboselogs
 import subprocess
 from pkg_resources import Requirement, resource_filename
 from mysql_innodb_autorecover import APPNAME
 from colorama import Fore, Back, Style
 
+verboselogs.install()
+
 class Yum:
-    logger = verboselogs.VerboseLogger(__module__)
+    logger = logging.getLogger(__module__)
 
     def __init__(self) -> None:
         super().__init__()
