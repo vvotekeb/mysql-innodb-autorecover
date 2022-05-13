@@ -11,6 +11,7 @@ from os.path import join, basename, split
 from mysql_innodb_autorecover import PERCONA_URL
 from colorama import Fore, Back, Style
 from tqdm import tqdm
+from alive_progress import alive_bar
 
 
 class Percona:
@@ -26,7 +27,7 @@ class Percona:
         Percona.logger.info("Temporary working directory located at: %s", self.tmpdir.name)
         self.download()
         self.extract()
-        #self.patch_makefile()
+        self.patch_makefile()
         self.compile()
 
 
@@ -68,14 +69,22 @@ class Percona:
         Percona.logger.info("Compiling Percona tools %s", self.source_dir)
         os.chdir(self.source_dir)
         make = subprocess.Popen("make", stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        stderr = []
+        with alive_bar(1171, title='Running make...', enrich_print=True, spinner="dots_reverse") as bar:
+            bar.text("[%s%sRunning configure%s]"%(Style.BRIGHT, Fore.YELLOW, Style.RESET_ALL))
+            for line in iter(make.stdout.readline, ""):
+                bar()
+                if line.startswith("cd mysql-source/include && make my_config.h"):
+                  bar.text("[%s%sCompiling%s]"%(Style.BRIGHT, Fore.CYAN, Style.RESET_ALL))
+            for line in iter(make.stderr.readline, ""):
+                bar()
         return_code = make.wait()
         if return_code:
-            Percona.logger.success("Compile failed! return code: %d", return_code)
-            for line in iter(make.stderr.readline, ""):
-                Percona.logger.critical(line.strip())
+            for line in stderr:
+                Percona.logger.error(line.strip())
+            Percona.logger.critical("Compile failed! Please check Makefile generated errors above and fix them before running this program again. Return code: %d", return_code)
             raise subprocess.CalledProcessError(return_code, "make")
         Percona.logger.success("Compile successful!")
-
 
     def cleanup(self):
         self.tmpdir.cleanup()

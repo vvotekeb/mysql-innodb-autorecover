@@ -8,5 +8,5 @@ requests
 archive
 tqdm
 
-
 ########## with Version Specifiers ##########
+alive_progress==1.6.2
