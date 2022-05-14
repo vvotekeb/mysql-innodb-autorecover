@@ -23,6 +23,7 @@ class Recover:
             self.percona.compile(alternate=True)
             self.percona.extract_innodb_pages(self.mysql.database, table, row_format)
             self.percona.extract_data(table, row_format)
+        self.percona.print_summary()
             
     def get_row_format(self, table) -> int:
         query = "SELECT ROW_FORMAT from information_schema.TABLES WHERE TABLE_SCHEMA='%s' AND TABLE_NAME='%s';" % (self.mysql.database, table)

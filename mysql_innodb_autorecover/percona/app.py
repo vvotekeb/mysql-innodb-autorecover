@@ -23,6 +23,10 @@ class Percona:
     PAGE_PARSER_BIN        = "page_parser"
     CREATE_DEFS_BIN        = "create_defs.pl"
     CONSTRAINTS_PARSER_BIN = "constraints_parser"
+    RECOVERED_TABLES       = {}
+    TABLES                 = 0
+    INDEXES                = 0
+    RECOVERED_INDEXES      = 0
 
     def __init__(self, datadir=None, target=None) -> None:
         super().__init__()
@@ -170,12 +174,38 @@ class Percona:
         extracted = pathlib.Path(table_dir).glob(search)
         os.chdir(table_dir)
         i = 0
+        Percona.TABLES = Percona.TABLES + 1
+        Percona.logger.info("Scanning for any deleted records from indexes: [%s%s%s%s]", Style.BRIGHT, Fore.BLUE, join(table_dir, 'FIL_PAGE_INDEX'), Style.RESET_ALL)
         for item in extracted:
             if not str(item).endswith('FIL_PAGE_INDEX'):
+                Percona.INDEXES = Percona.INDEXES + 1
                 binary = [join(self.tool_defs_dir, Percona.CONSTRAINTS_PARSER_BIN), "-%s"%row_format, "-D", "-f", item]
-                Percona.logger.info("Extracting deleted records with cmd: %s%s%s", Fore.YELLOW, binary, Style.RESET_ALL)
-                with open("%s%d.tsv"%(table,i), "w") as tsv:
+                tsv_file = "%s%d.tsv"%(table,i)
+                with open(tsv_file, "w") as tsv:
                     make = subprocess.Popen(binary, stdout=tsv, stderr=subprocess.PIPE)
+                if os.stat(tsv_file).st_size == 0:
+                    Percona.logger.warn("[%s%s%s%s] - No deleted records found", Style.BRIGHT, Fore.BLUE, os.path.basename(item), Style.RESET_ALL)
+                    os.remove(tsv_file)
+                else:
+                    Percona.logger.success("[%s%s%s%s] - Deleted records found", Style.BRIGHT, Fore.BLUE, os.path.basename(item), Style.RESET_ALL)
+                    Percona.RECOVERED_TABLES.add(table)
+                    Percona.RECOVERED_INDEXES = Percona.RECOVERED_INDEXES + 1
                 i=i+1
+
+
+    def print_summary(self):
+        Percona.logger.info("===============================================")
+        Percona.logger.info("                    SUMMARY                    ")
+        Percona.logger.info("===============================================")
+        Percona.logger.info("  Tables  Scanned: %s%d%s  ", Fore.CYAN, Percona.TABLES, Style.RESET_ALL)
+        Percona.logger.info("  Indexes Scanned: %s%d%s  ", Fore.CYAN, Percona.INDEXES, Style.RESET_ALL)
+        Percona.logger.info("-----------------------------------------------")
+        Percona.logger.info("  Tables Recovered: %s%d%s  ", Fore.CYAN, len(Percona.RECOVERED_TABLES), Style.RESET_ALL)
+        Percona.logger.info("  Indexes Recovered: %s%d%s  ", Fore.CYAN, Percona.RECOVERED_INDEXES, Style.RESET_ALL)
+        if Percona.RECOVERED_INDEXES > 0:
+            Percona.logger.info("  Recovered Tables:  ")
+            for item in Percona.RECOVERED_TABLES:
+                Percona.logger.info("  %s  "%item) 
+        Percona.logger.info("-----------------------------------------------")
 
 
