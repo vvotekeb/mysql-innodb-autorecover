@@ -21,8 +21,8 @@ class Recover:
             row_format = self.get_row_format(table)
             self.percona.generate_table_defs(table, self.mysql.host, self.mysql.port, self.mysql.user, self.mysql.password, self.mysql.database)
             self.percona.compile(alternate=True)
-            self.percona.extract_innodb_pages(self.mysql.database, table, row_format)
-            self.percona.extract_data(table, row_format)
+            if self.percona.extract_innodb_pages(self.mysql.database, table, row_format):
+                self.percona.extract_data(table, row_format)
         self.percona.print_summary()
             
     def get_row_format(self, table) -> int:

@@ -9,6 +9,7 @@ import subprocess
 import glob
 import pathlib
 import shutil
+import re
 
 from os.path import join, basename, split
 from mysql_innodb_autorecover import PERCONA_URL
@@ -23,10 +24,11 @@ class Percona:
     PAGE_PARSER_BIN        = "page_parser"
     CREATE_DEFS_BIN        = "create_defs.pl"
     CONSTRAINTS_PARSER_BIN = "constraints_parser"
-    RECOVERED_TABLES       = {}
+    RECOVERED_TABLES       = set()
     TABLES                 = 0
     INDEXES                = 0
     RECOVERED_INDEXES      = 0
+    LOAD_SQL_QUERIES       = []
 
     def __init__(self, datadir=None, target=None) -> None:
         super().__init__()
@@ -42,6 +44,7 @@ class Percona:
         self.tool_dir = join(self.tmpdir, "tools")
         self.tool_defs_dir = join(self.tool_dir, "defs")
         self.recovered_dir = join(self.tmpdir, "recovered")
+        self.recovered_indexes_dir = join(self.recovered_dir, "indexes")
 
         Percona.logger.info("Temporary working directory located at: %s%s%s", Fore.YELLOW, self.tmpdir, Style.RESET_ALL)
         self.download()
@@ -120,41 +123,45 @@ class Percona:
                 Percona.logger.error(line.strip())
             Percona.logger.critical("Compile failed! Please check Makefile generated errors above and fix them before running this program again. Return code: %d", return_code)
             raise subprocess.CalledProcessError(return_code, "make")
-        Percona.logger.success("Compile successful!")
+        Percona.logger.notice("Compile successful!")
         if not alternate:
             Percona.logger.debug("Copying tools directory to %s for compiling per table defs"%self.tool_defs_dir)
             shutil.copytree(self.source_dir, self.tool_defs_dir, dirs_exist_ok=True)
         
 
 
-    def find_ibd_file(self, database, table) -> str:
+    def find_ibd_file(self, database, table):
         ibd_file = join(self.data_dir, database, table + '.ibd')
         Percona.logger.notice("Looking for innodb table file %s%s.ibd%s", Fore.YELLOW, table, Style.RESET_ALL)
         if os.path.exists(ibd_file):
-            Percona.logger.success("Found %s.ibd at %s%s%s", table, Fore.YELLOW, ibd_file, Style.RESET_ALL)
+            Percona.logger.notice("Found %s.ibd at %s%s%s", table, Fore.YELLOW, ibd_file, Style.RESET_ALL)
             return ibd_file
         else:
             Percona.logger.warn("%s.ibd not found at %s", table, ibd_file)
             ibd_file = join(self.data_dir, table + '.ibd')
             if os.path.exists(ibd_file):
-                Percona.logger.success("Found %s.ibd at %s%s%s", table, Fore.YELLOW, ibd_file, Style.RESET_ALL)
+                Percona.logger.notice("Found %s.ibd at %s%s%s", table, Fore.YELLOW, ibd_file, Style.RESET_ALL)
                 return ibd_file
             else:
                 Percona.logger.critical("%s.ibd not found at %s. Giving up!", table, ibd_file)
+                return None
 
 
 
-    def extract_innodb_pages(self, database, table, row_format=5):
-        table_dir = join(self.recovered_dir, table)
+    def extract_innodb_pages(self, database, table, row_format=5) -> bool:
+        table_dir = join(self.recovered_indexes_dir, table)
         os.makedirs(table_dir, exist_ok=True)
         ibd_file = self.find_ibd_file(database, table)
+        if ibd_file is None:
+            return False
         self.page_parser(table_dir, table, row_format, ibd_file)
+        return True
 
 
     def page_parser(self, table_dir, table, row_format, ibd_file):
         os.chdir(table_dir)
-        binary = [join(self.source_dir, Percona.PAGE_PARSER_BIN), "-%s"%row_format, "-f", ibd_file]
-        Percona.logger.info("Parsing deleted pages from %s%s.ibd%s"%(Fore.YELLOW, table, Style.RESET_ALL))
+        binary = [join(self.source_dir, Percona.PAGE_PARSER_BIN), "-%d"%row_format, "-f", ibd_file]
+        Percona.logger.info("Parsing deleted pages from %s%s.ibd%s: %s"%(Fore.YELLOW, table, Style.RESET_ALL, ibd_file))
         make = subprocess.Popen(binary, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return_code = make.wait()
 
@@ -169,28 +176,41 @@ class Percona:
 
 
     def extract_data(self, table, row_format):
-        table_dir = join(self.recovered_dir, table)
+        table_dir = join(self.recovered_indexes_dir, table)
         search = '**/FIL_PAGE_INDEX/*'
         extracted = pathlib.Path(table_dir).glob(search)
         os.chdir(table_dir)
-        i = 0
         Percona.TABLES = Percona.TABLES + 1
-        Percona.logger.info("Scanning for any deleted records from indexes: [%s%s%s%s]", Style.BRIGHT, Fore.BLUE, join(table_dir, 'FIL_PAGE_INDEX'), Style.RESET_ALL)
+        Percona.logger.info("Scanning for any deleted records from indexes: [%s%s%s%s]", Style.BRIGHT, Fore.BLUE, table_dir, Style.RESET_ALL)
         for item in extracted:
             if not str(item).endswith('FIL_PAGE_INDEX'):
                 Percona.INDEXES = Percona.INDEXES + 1
-                binary = [join(self.tool_defs_dir, Percona.CONSTRAINTS_PARSER_BIN), "-%s"%row_format, "-D", "-f", item]
-                tsv_file = "%s%d.tsv"%(table,i)
+                binary = [join(self.tool_defs_dir, Percona.CONSTRAINTS_PARSER_BIN), "-%d"%row_format, "-D", "-f", item]
+                tsv_file = "%s%s.tsv"%(table,os.path.basename(item))
                 with open(tsv_file, "w") as tsv:
                     make = subprocess.Popen(binary, stdout=tsv, stderr=subprocess.PIPE)
+                _, stderr = make.communicate()
                 if os.stat(tsv_file).st_size == 0:
                     Percona.logger.warn("[%s%s%s%s] - No deleted records found", Style.BRIGHT, Fore.BLUE, os.path.basename(item), Style.RESET_ALL)
                     os.remove(tsv_file)
                 else:
-                    Percona.logger.success("[%s%s%s%s] - Deleted records found", Style.BRIGHT, Fore.BLUE, os.path.basename(item), Style.RESET_ALL)
+                    Percona.logger.success("[%s%s%s%s] - Deleted records found%s", Style.BRIGHT, Fore.BLUE, os.path.basename(item), Fore.GREEN, Style.RESET_ALL)
+                    # Create directory to save recovered data
+                    recovered_tsv_dir = join(self.recovered_dir, table)
+                    os.makedirs(recovered_tsv_dir, exist_ok=True)
+                    recovered_data_file = join(recovered_tsv_dir, tsv_file)
+                    os.rename(join(table_dir, tsv_file), recovered_data_file)
+
+                    # Save load data sql query
+                    default_dir = join(self.workdir, "dumps", "default", table)
+                    stderr = re.sub(default_dir, recovered_data_file, stderr.decode('utf-8'))
+
+                    # Save summary
+                    Percona.LOAD_SQL_QUERIES.append(stderr)
                     Percona.RECOVERED_TABLES.add(table)
                     Percona.RECOVERED_INDEXES = Percona.RECOVERED_INDEXES + 1
-                i=i+1
+        shutil.rmtree(table_dir)
+        shutil.rmtree(self.recovered_indexes_dir)
 
 
     def print_summary(self):
@@ -203,9 +223,18 @@ class Percona:
         Percona.logger.info("  Tables Recovered: %s%d%s  ", Fore.CYAN, len(Percona.RECOVERED_TABLES), Style.RESET_ALL)
         Percona.logger.info("  Indexes Recovered: %s%d%s  ", Fore.CYAN, Percona.RECOVERED_INDEXES, Style.RESET_ALL)
         if Percona.RECOVERED_INDEXES > 0:
-            Percona.logger.info("  Recovered Tables:  ")
+            Percona.logger.info("  Recovered Rows from Tables:  ")
             for item in Percona.RECOVERED_TABLES:
-                Percona.logger.info("  %s  "%item) 
+                Percona.logger.info("  %s%s%s%s  ", Style.BRIGHT, Fore.MAGENTA, item, Style.RESET_ALL) 
+        Percona.logger.info("")
+        Percona.logger.info("Please go over the recovered data under %s%s<table-name>%s  and then execute the following SQL commands (if required)", Fore.RED, self.recovered_dir, Style.RESET_ALL)
+        Percona.logger.info("If multiple files present under the same table name (directory), there might be conflicting rows,")
+        Percona.logger.info("so, please go over the files, decide (and edit) each file before loading them into database")
+        Percona.logger.info("%sTIP: When multiple files found under a table, prefer the one that has most entries%s", Fore.CYAN, Style.RESET_ALL)
+        Percona.logger.info("%sQueries to load data into database: %s", Style.BRIGHT, Fore.CYAN)
+        for item in Percona.LOAD_SQL_QUERIES:
+            Percona.logger.warning("%s%s%s%s  ", Style.BRIGHT, Fore.BLUE, item, Style.RESET_ALL)
+        Percona.logger.info("")
         Percona.logger.info("-----------------------------------------------")
 
 
