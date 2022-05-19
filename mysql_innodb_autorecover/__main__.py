@@ -1,7 +1,7 @@
 """
  Recover lost rows from innodb pages
  Usage:
-   mysql_innodb_autorecover [-l LEVEL] (-u USERNAME) [-p PASSWORD] (-H HOSTNAME) [-P PORT] (-D DATABASE) [-t TABLES] [-T TEMPDIR] (-d DATADIR)
+   mysql_innodb_autorecover [-l LEVEL] (-u USERNAME) [-p PASSWORD] (-H HOSTNAME) [-P PORT] (-D DATABASE) [-t TABLES] (-r RECOVERYDIR) (-d DATADIR)
    mysql_innodb_autorecover -v | --version
    mysql_innodb_autorecover -h | --help
 
@@ -14,9 +14,9 @@
    -H HOSTNAME                        MySQL hostname
    -P PORT                            MySQL port
    -D DATABASE                        MySQL database
-   -d DATADIR                         path to MySQL data directory or a copy of it (ex: /var/lib/mysql) 
    -t TABLES                          (optional) mySQL tables to recover. If left out all the tables from the database are considered for recovering). Comma-separated list of tables, or a filename prepended with @, for ex: @/tmp/tables.txt
-   -T TEMPDIR                         (optional) path to a directory where percona tool is downloaded and compiled. If not specified a temporary directory is created and deleted automatically when the process stops
+   -r RECOVERYDIR                         (optional) path to a directory where percona tool is downloaded and compiled. If not specified a temporary directory is created and deleted automatically when the process stops
+   -d DATADIR                         path to MySQL data directory or a copy of it (ex: /var/lib/mysql) 
 """
 import sys
 import logging, coloredlogs, verboselogs
@@ -57,7 +57,7 @@ def main(args=None):
                 tables=arguments['-t']
             )
 
-    percona = Percona(target=arguments['-T'], datadir=arguments['-d'])
+    percona = Percona(recovery=arguments['-r'], datadir=arguments['-d'])
     recover = Recover(mysql, percona)
     recover.recover()
 

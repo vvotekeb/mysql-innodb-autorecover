@@ -24,8 +24,8 @@ export PATH=$HOME/.local/bin:$PATH
 
 # Run
 ```
-mysql_innodb_autorecover -u <Username> -H <Hostname> -D <DB Name> -T /tmp/recovered -d /var/lib/mysql 
+mysql_innodb_autorecover -u <Username> -H <Hostname> -D <DB Name> -r /tmp/recovered -d /var/lib/mysql 
 ```
 
-- `-T /tmp/recovered`: Whatever recovered, can be found under `/tmp/recovered/recovered` as `tsv` files
+- `-r /tmp/recovered`: Whatever recovered, can be found under `/tmp/recovered/<table-name>` as `tsv` files
 - `-d /var/lib/mysql`: MySQL data directory. Unless running with `sudo`, make sure to have access permissions to this directory or make a copy of it and refer to the path of the copy

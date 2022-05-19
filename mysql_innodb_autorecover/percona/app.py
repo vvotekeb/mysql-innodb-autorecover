@@ -30,20 +30,21 @@ class Percona:
     RECOVERED_INDEXES      = 0
     LOAD_SQL_QUERIES       = []
 
-    def __init__(self, datadir=None, target=None) -> None:
+    def __init__(self, datadir=None, recovery=None) -> None:
         super().__init__()
         self.workdir = os.getcwd()
         self.data_dir = datadir
 
-        if target is None:
-            self.tmpdir = tempfile.TemporaryDirectory().name
-        else:
-            os.makedirs(target, exist_ok=True)
-            self.tmpdir = target
+        # Create temporary directories for downloads and compiling
+        self.tmpdir = tempfile.TemporaryDirectory().name
         self.download_dir = join(self.tmpdir, "download")
         self.tool_dir = join(self.tmpdir, "tools")
         self.tool_defs_dir = join(self.tool_dir, "defs")
-        self.recovered_dir = join(self.tmpdir, "recovered")
+
+      
+        # Create directory for recovered data
+        os.makedirs(recovery, exist_ok=True)
+        self.recovered_dir = join(recovery, "recovered")
         self.recovered_indexes_dir = join(self.recovered_dir, "indexes")
 
         Percona.logger.info("Temporary working directory located at: %s%s%s", Fore.YELLOW, self.tmpdir, Style.RESET_ALL)
@@ -204,6 +205,8 @@ class Percona:
                     # Save load data sql query
                     default_dir = join(self.workdir, "dumps", "default", table)
                     stderr = re.sub(default_dir, recovered_data_file, stderr.decode('utf-8'))
+                    stderr = re.sub("LOAD DATA INFILE", "LOAD DATA LOCAL INFILE", stderr)
+                    stderr = re.sub("REPLACE", "IGNORE", stderr)
 
                     # Save summary
                     Percona.LOAD_SQL_QUERIES.append(stderr)
@@ -226,15 +229,20 @@ class Percona:
             Percona.logger.info("  Recovered Rows from Tables:  ")
             for item in Percona.RECOVERED_TABLES:
                 Percona.logger.info("  %s%s%s%s  ", Style.BRIGHT, Fore.MAGENTA, item, Style.RESET_ALL) 
-        Percona.logger.info("")
-        Percona.logger.info("Please go over the recovered data under %s%s<table-name>%s  and then execute the following SQL commands (if required)", Fore.RED, self.recovered_dir, Style.RESET_ALL)
-        Percona.logger.info("If multiple files present under the same table name (directory), there might be conflicting rows,")
-        Percona.logger.info("so, please go over the files, decide (and edit) each file before loading them into database")
-        Percona.logger.info("%sTIP: When multiple files found under a table, prefer the one that has most entries%s", Fore.CYAN, Style.RESET_ALL)
-        Percona.logger.info("%sQueries to load data into database: %s", Style.BRIGHT, Fore.CYAN)
-        for item in Percona.LOAD_SQL_QUERIES:
-            Percona.logger.warning("%s%s%s%s  ", Style.BRIGHT, Fore.BLUE, item, Style.RESET_ALL)
-        Percona.logger.info("")
+            Percona.logger.info("")
+            Percona.logger.info("Please go over the recovered data under %s%s/<table-name>%s  and then execute the following SQL commands (if required)", Fore.RED, self.recovered_dir, Style.RESET_ALL)
+            Percona.logger.info("If multiple files present under the same table name (directory), there might be conflicting rows,")
+            Percona.logger.info("so, please go over the files, decide (and edit) each file before loading them into database")
+            Percona.logger.info("%sTIP: When multiple files found under a table, prefer the one that has most entries%s", Fore.CYAN, Style.RESET_ALL)
+            Percona.logger.info("%sQueries to load data into database: %s", Style.BRIGHT, Fore.CYAN)
+            load_queries_file = join(self.recovered_dir, "load_recovered_data.sql")
+            with open(load_queries_file, 'w') as lqf:
+                for item in Percona.LOAD_SQL_QUERIES:
+                    Percona.logger.warning("%s%s%s%s  ", Style.BRIGHT, Fore.BLUE, item, Style.RESET_ALL)
+                    lqf.write("%s\n" % item)
+            Percona.logger.info("")
+            Percona.logger.info("These queries can be found at %s%s%s", Fore.RED, load_queries_file, Style.RESET_ALL)
+            Percona.logger.info("")
         Percona.logger.info("-----------------------------------------------")
 
 

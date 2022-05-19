@@ -1,3 +1,4 @@
 glibc-static
-# python3-dnf
 ncurses-devel
+perl-DBI
+perl-DBD-MySQL
