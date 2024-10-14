@@ -127,7 +127,9 @@ class Percona:
         Percona.logger.notice("Compile successful!")
         if not alternate:
             Percona.logger.debug("Copying tools directory to %s for compiling per table defs"%self.tool_defs_dir)
-            shutil.copytree(self.source_dir, self.tool_defs_dir, dirs_exist_ok=True)
+            if os.path.exists(self.tool_defs_dir):
+                shutil.rmtree(self.tool_defs_dir)
+            shutil.copytree(self.source_dir, self.tool_defs_dir)
         
 
 
