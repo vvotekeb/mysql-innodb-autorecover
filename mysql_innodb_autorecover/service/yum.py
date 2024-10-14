@@ -31,6 +31,5 @@ class Yum:
                   if return_code is not None:
                       if return_code != 0:
                           Yum.logger.critical('%s -- not installed' % (package.strip()))
-                          sys.exit(-1)
                       else:
                           Yum.logger.success('%s -- installed' % (package.strip()))
