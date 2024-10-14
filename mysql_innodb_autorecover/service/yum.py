@@ -19,7 +19,7 @@ class Yum:
         with open(packages, 'r') as source:
             Yum.logger.info("Checking for installed packages...")
             installed = subprocess.Popen(
-                          ['yum', 'list', 'installed'],
+                          ['dpkg', '-l'],
                           stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE
                       )
